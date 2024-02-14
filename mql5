@@ -1,0 +1,134 @@
+mql5
+//+------------------------------------------------------------------+
+//|                  RSIBand Pro EA MT5                               |
+//|                  Developer: Forex Robot Easy Team                  |
+//|                  Developer's Site: forexroboteasy.com              |
+//+------------------------------------------------------------------+
+
+// Include necessary libraries
+#include <Trade\Trade.mqh>
+#include <MovingAverages\MovingAverages.mqh>
+
+// Define input parameters
+input double LotSize = 0.01;                            // Trade lot size
+input double StopLoss = 100;                            // Stop loss level in pips
+input double TakeProfit = 200;                          // Take profit level in pips
+input int MaxSpread = 10;                               // Maximum allowed spread in points
+input double TrailingStop = 50;                         // Trailing stop level in pips
+input int TrailingStep = 10;                            // Trailing stop step in pips
+
+// Define global variables
+int ticket = 0;                                         // Trade ticket number
+double rsi;                                             // RSI value
+int maPeriod = 14;                                      // Moving average period
+int bandPeriod = 20;                                    // Bollinger Bands period
+double bandDeviation = 2.0;                             // Bollinger Bands deviation
+bool isBuy = false;                                     // Buy signal flag
+bool isSell = false;                                    // Sell signal flag
+double stopLossLevel = 0;                               // Stop loss level
+double takeProfitLevel = 0;                             // Take profit level
+double trailingStopLevel = 0;                           // Trailing stop level
+
+// Create objects
+CTrade trade;
+CMovingAverages ma;
+CBollingerBands bands;
+
+// OnInit() function
+void OnInit()
+{
+   // Set up initial stop loss and take profit levels
+   stopLossLevel = StopLoss * _Point;
+   takeProfitLevel = TakeProfit * _Point;
+
+   // Enable trailing stop
+   trade.SetTrailingStop(TrailingStop * _Point, TrailingStep * _Point);
+}
+
+// OnTick() function
+void OnTick()
+{
+   // Check if the EA is allowed to trade
+   if (!trade.IsAllowed())
+      return;
+
+   // Check for new signals
+   CheckSignals();
+
+   // Check if there are open trades
+   if (trade.PositionsTotal() > 0)
+   {
+      // Update trailing stop levels
+      UpdateTrailingStop();
+
+      // Check for stop loss or take profit hit
+      if (trade.PositionGetDouble(POSITION_SL) != stopLossLevel ||
+          trade.PositionGetDouble(POSITION_TP) != takeProfitLevel)
+      {
+         trade.PositionModify(ticket, stopLossLevel, takeProfitLevel);
+      }
+   }
+   else
+   {
+      // Check if there is a buy signal
+      if (isBuy)
+      {
+         // Open a buy trade
+         ticket = trade.Buy(LotSize, Symbol(), Ask, stopLossLevel, takeProfitLevel, 'Buy', 0);
+         isBuy = false;
+      }
+
+      // Check if there is a sell signal
+      if (isSell)
+      {
+         // Open a sell trade
+         ticket = trade.Sell(LotSize, Symbol(), Bid, stopLossLevel, takeProfitLevel, 'Sell', 0);
+         isSell = false;
+      }
+   }
+}
+
+// CheckSignals() function
+void CheckSignals()
+{
+   // Calculate RSI value
+   rsi = ma.RSI(MarketSeries.Close, maPeriod);
+
+   // Check if RSI is above 70
+   if (rsi > 70)
+   {
+      // Check if the price is below the lower Bollinger Band
+      if (MarketSeries.Close[0] < bands.LowerBands[0])
+      {
+         isBuy = true;
+      }
+   }
+
+   // Check if RSI is below 30
+   if (rsi < 30)
+   {
+      // Check if the price is above the upper Bollinger Band
+      if (MarketSeries.Close[0] > bands.UpperBands[0])
+      {
+         isSell = true;
+      }
+   }
+}
+
+// UpdateTrailingStop() function
+void UpdateTrailingStop()
+{
+   // Get the current profit of the trade
+   double profit = trade.PositionGetDouble(POSITION_PROFIT);
+
+   // Check if the current profit is greater than the trailing stop level
+   if (profit > trailingStopLevel)
+   {
+      trailingStopLevel = profit;
+
+      // Update the stop loss level
+      stopLossLevel = trade.PositionGetDouble(POSITION_OPEN_PRICE) + (trailingStopLevel - trade.PositionGetDouble(POSITION_OPEN_PRICE));
+   }
+}
+
+//+------------------------------------------------------------------+
